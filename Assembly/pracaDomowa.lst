@@ -1,0 +1,390 @@
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 1
+
+
+
+
+
+       MCS-51 Family Macro Assembler   A S E M - 5 1   V 1.3
+       =====================================================
+
+
+
+	Source File:	pracaDomowa.asm
+	Object File:	pracaDomowa.hex
+	List File:	pracaDomowa.lst
+
+
+
+ Line  I  Addr  Code            Source
+
+    1:				;
+    2:				; Moj pierwszy program dla DSM
+    3:				; PD: Zabezpieczyc ustawianie godziny, zeby nie wychodzic poza zakres
+    4:
+    5:		B	 97	TEST bit P1.7
+    6:		B	 95	BUZZER bit P1.5
+    7:		B	 96	SEG7 bit P1.6
+    8:		B	 B5	SKEY bit P3.5
+    9:
+   10:		N      0030	CSDS equ 30h 				; Adres rejestru aktywnych wyswietlaczy
+   11:		N      0038	CSDB equ 38h 				; Adres rejestru aktywnych segmentow
+   12:
+   13:		N      007C	KEYS  equ 7Ch				; 4 ostatnie stany klawiatury
+   14:		N      0076	ZEGAR equ 76h 				; Tablica na 6 cyfr wskazania zegara
+   15:		N      0075	SS	equ 75h			; Licznik sekund
+   16:		N      0074	MM    equ 74h				; Licznik minut
+   17:		N      0073	GG    equ 73h				; Licznik godzin
+   18:
+   19:
+   20:		N      0000	org 0
+   21:	  0000	02 00 80		ljmp start
+   22:
+   23:		N      000B	org 0Bh						; Procedura obslugi przerwania od TIMER0
+   24:	  000B	75 8C E0		mov TH0, #224           ; Dla trybu 0 900 przerwan na sekunde co 1024 cykle maszynowe
+   25:	  000E	D2 D5			setb F0
+   26:	  0010	32			reti            		; Powrot z przerwania
+   27:
+   28:		N      0080	org 80h
+   29:	  0080			start:
+   30:	  0080	75 75 34		mov SS, #52
+   31:	  0083	75 74 2E		mov MM, #46
+   32:	  0086	75 73 16		mov GG, #22
+   33:
+   34:	  0089	12 01 6D		lcall przelicz
+   35:
+   36:	  008C	79 76			mov R1, #ZEGAR 			; Po tablicy z cyframi zegara chodzimy wskaznikiem R1
+   37:
+   38:	  008E	C2 96			clr SEG7 				; Wlacz 7-segment
+   39:	  0090	7F 01			mov R7, #00000001b 		; Zaczynamy od "najmlodszego" wyswietlacza
+   40:	  0092	90 01 9B		mov DPTR, #wzory        ; Adres tablicy przechowywujacej wzory 7-seg do DPTR
+   41:
+   42:	  0095	75 A8 00	    mov IE, #0				; Blokujemy wszystkie przerwania
+   43:	  0098	75 89 70		mov TMOD, #01110000b	; Blokada TIMER1, TIMER0 w trybie 0
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 2
+
+
+
+ Line  I  Addr  Code            Source
+
+   44:	  009B	75 8C E0		mov TH0, #224           ; 900 przerwan na sekunde co 1024 cykle maszynowe
+   45:
+   46:	  009E	7E 84			mov R6, #132            ; Zliczanie do 900, zeby pierwsza sekunda trwala sekunde
+   47:	  00A0	7D 04			mov R5, #4
+   48:
+   49:	  00A2	D2 8C			setb TR0				; zgoda na zliczanie przez liczniki TIMERa0
+   50:	  00A4	D2 A9			setb ET0				; zgoda na obsluge przerwania od TIMER0
+   51:	  00A6	D2 AF			setb EA					; globalna zgoda na obsluge przerwania
+   52:
+   53:	  00A8			main_loop:
+   54:	  00A8	30 D5 FD		jnb F0, main_loop		; Czekamy na przerwanie
+   55:	  00AB	C2 D5			clr F0					; Zapominamy o przerwaniu
+   56:
+   57:					; Tutaj jestem 900 razy na sekunde
+   58:
+   59:					; Cyfra
+   60:	  00AD	78 38			mov R0, #CSDB 			; Zaladuj adres CSDB do R0
+   61:	  00AF	E7			mov A, @R1              ; Aktualna cyfra zegara do akumulatora
+   62:	  00B0	09			inc R1                  ; W nastepnym obrocie petli wez nastepna cyfre
+   63:	  00B1	D2 96			setb SEG7               ; Wylacz 7-segment (anti-ghosting)
+   64:	  00B3	F2			movx @R0, A             ; Wysylamy wzorek do rejestru segmentow
+   65:
+   66:					; Wyswietlacz
+   67:	  00B4	78 30			mov R0, #CSDS 			; Zaladuj adres CSDS do R0
+   68:	  00B6	EF			mov A, R7				; Aktualny wyswietlacz do akumulatora
+   69:	  00B7	F2			movx @R0, A             ; Wybierz wyswietlacz
+   70:	  00B8	C2 96			clr SEG7                ; Wlacz 7-segment
+   71:
+   72:	  00BA	30 B5 02		jnb SKEY, noKey
+   73:	  00BD	42 7C			orl KEYS, A
+   74:
+   75:	  00BF			noKey:
+   76:	  00BF	23			rl A                    ; W nastepnym obrocie petli wez nastepny wyswietlacz
+   77:	  00C0	FF			mov R7, A				; Zapamietaj w R7 nowy wyswietlacz
+   78:	  00C1	30 E7 22		jnb ACC.7, noACC7 		; Jesli bit 7 = 0, skocz do noACC7
+   79:	  00C4	7F 01			mov R7, #00000001b       ; Jesli nie, zaczynam znowu od "najmlodszego" wyswietlacza
+   80:	  00C6	79 76			mov R1, #ZEGAR 			; Wracamy na poczatek tablicy ZEGAR
+   81:
+   82:					; Debouncing klawiatury, 3 takie same, 1 nie aby zareagowac tylko raz!
+   83:	  00C8	E5 7C			mov A, KEYS
+   84:	  00CA	B5 7D 0D		cjne A, KEYS+1, unstable
+   85:	  00CD	B5 7E 0A		cjne A, KEYS+2, unstable
+   86:	  00D0	B5 7F 02		cjne A, KEYS+3, stable
+   87:	  00D3	80 05			sjmp unstable
+   88:
+   89:	  00D5			stable:
+   90:	  00D5	60 03			jz unstable				; Nie reagujemy na puszczenie klawisza
+   91:	  00D7	12 01 11		lcall obslugaKlawiatury
+   92:	  00DA			unstable:
+   93:	  00DA	85 7E 7F		mov KEYS+3, KEYS+2      ;
+   94:	  00DD	85 7D 7E		mov KEYS+2, KEYS+1      ;
+   95:	  00E0	85 7C 7D		mov KEYS+1, KEYS		;
+   96:	  00E3	75 7C 00		mov KEYS, #0            ; Skladaj klawiature od poczatku
+   97:	  00E6			noACC7:
+   98:	  00E6	DE C0			djnz R6, main_loop      ; Skocz do main_loop jesli R6 nie zero
+   99:	  00E8	DD BE			djnz R5, main_loop      ; Skocz do main_loop jesli R5 nie zero
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 3
+
+
+
+ Line  I  Addr  Code            Source
+
+  100:
+  101:	  00EA	7E 84			mov R6, #132            ; Zliczanie do 900 (pelna sekunda)
+  102:	  00EC	7D 04			mov R5, #4
+  103:
+  104:					; Tutaj jestem co sekunde
+  105:					;cpl P1.7
+  106:	  00EE	05 75			inc SS        			; Zwieksz sekundy
+  107:
+  108:					; Zwiekszanie minut/godzin przy przepelnieniu
+  109:	  00F0	E5 75			mov A, SS
+  110:	  00F2	B4 3C 17		cjne A, #60, nie60      ; Jesli sekundy != 60, pomijamy
+  111:	  00F5	75 75 00		mov SS, #0              ; Jezeli tak, zerujemy sekundy
+  112:	  00F8	05 74			inc MM                  ; I zwiekszamy minuty
+  113:
+  114:	  00FA	E5 74			mov A, MM
+  115:	  00FC	B4 3C 0D		cjne A, #60, nie60
+  116:	  00FF	75 74 00		mov MM, #0
+  117:	  0102	05 73			inc GG
+  118:
+  119:	  0104	E5 73			mov A, GG
+  120:	  0106	B4 18 03		cjne A, #24, nie60
+  121:	  0109	75 73 00		mov GG, #0
+  122:
+  123:	  010C			nie60:
+  124:	  010C	12 01 6D		lcall przelicz
+  125:
+  126:	  010F	80 97			sjmp main_loop
+  127:
+  128:	  0111			obslugaKlawiatury:          ; Zakladamy ze stan klawiatury jest w akumulatorze
+  129:	  0111	B4 22 0A		cjne A, #100010b, nieLewoEsc
+  130:	  0114	05 73			inc GG
+  131:	  0116	E5 73			mov A, GG
+  132:	  0118	B4 18 F6		cjne A, #24, obslugaKlawiatury
+  133:	  011B	75 73 00		mov GG, #0
+  134:
+  135:	  011E			nieLewoEsc:
+  136:	  011E	B4 21 0A		cjne A, #100001b, nieLewoEnter
+  137:	  0121	15 73			dec GG
+  138:	  0123	E5 73			mov A, GG
+  139:	  0125	B4 FF F6		cjne A, #-1, nieLewoEsc
+  140:	  0128	75 73 18		mov GG, #24
+  141:
+  142:	  012B			nieLewoEnter:
+  143:	  012B	B4 12 0A		cjne A, #10010b, nieDolEsc
+  144:	  012E	05 74			inc MM
+  145:	  0130	E5 74			mov A, MM
+  146:	  0132	B4 3C F6		cjne A, #60, nieLewoEnter
+  147:	  0135	75 74 00		mov MM, #0
+  148:	  0138			nieDolEsc:
+  149:	  0138	B4 11 0A		cjne A, #10001b, nieDolEnter
+  150:	  013B	15 74			dec MM
+  151:	  013D	E5 74			mov A, MM
+  152:	  013F	B4 FF F6		cjne A, #-1, nieDolEsc
+  153:	  0142	75 74 3C		mov MM, #60
+  154:	  0145			nieDolEnter:
+  155:	  0145	B4 06 0A		cjne A, #110b, niePrawoEsc
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 4
+
+
+
+ Line  I  Addr  Code            Source
+
+  156:	  0148	05 75			inc SS
+  157:	  014A	E5 75			mov A, SS
+  158:	  014C	B4 3C F6		cjne A, #60, nieDolEnter
+  159:	  014F	75 75 00		mov SS, #0
+  160:	  0152			niePrawoEsc:
+  161:	  0152	B4 05 0A		cjne A, #101b, niePrawoEnter
+  162:	  0155	15 75			dec SS
+  163:	  0157	E5 75			mov A, SS
+  164:	  0159	B4 FF F6		cjne A, #-1, niePrawoEsc
+  165:	  015C	75 75 3C		mov SS, #60
+  166:	  015F			niePrawoEnter:
+  167:	  015F	B4 08 07		cjne A, #1000b, nieGora
+  168:	  0162	75 75 00		mov SS, #0
+  169:	  0165	7E 84			mov R6, #132            ; Zliczanie do 900 (pelna sekunda)
+  170:	  0167	7D 04			mov R5, #4
+  171:	  0169			nieGora:
+  172:	  0169	12 01 6D		lcall przelicz
+  173:	  016C	22			ret
+  174:
+  175:	  016D			przelicz:                   ; Przeliczanie liczb z GG, MM i SS na cyfry dla tablicy ZEGAR
+  176:	  016D	90 01 9B		mov DPTR, #wzory
+  177:
+  178:	  0170	E5 75			mov A, SS				; Zaladuj do akumulator licznik sekund
+  179:	  0172	75 F0 0A		mov B, #10
+  180:	  0175	84			div AB					; Podziel sekundy przez 10
+  181:	  0176	93			movc A, @A+DPTR         ; Pobieramy wzorek cyfry dziesiatek sekund z pamieci ROM
+  182:	  0177	F5 77			mov ZEGAR+1, A          ; Umieszczamy go w odpowiednim miejscu
+  183:	  0179	E5 F0			mov A, B                ; Jednostki sekund do akumulatora
+  184:	  017B	93			movc A, @A+DPTR         ; Pobieramy wzorek cyfry jednostek sekund z pamieci ROM
+  185:	  017C	F5 76			mov ZEGAR, A            ; Umieszczamy go w odpowiednim miejscu
+  186:
+  187:	  017E	E5 74			mov A, MM				; Zaladuj do akumulator licznik minut
+  188:	  0180	75 F0 0A		mov B, #10
+  189:	  0183	84			div AB					; Podziel minuty przez 10
+  190:	  0184	93			movc A, @A+DPTR         ; Pobieramy wzorek cyfry dziesiatek minut z pamieci ROM
+  191:	  0185	F5 79			mov ZEGAR+3, A          ; Umieszczamy go w odpowiednim miejscu
+  192:	  0187	E5 F0			mov A, B                ; Jednostki minut do akumulatora
+  193:	  0189	93			movc A, @A+DPTR         ; Pobieramy wzorek cyfry jednostek minut z pamieci ROM
+  194:	  018A	F5 78			mov ZEGAR+2, A          ; Umieszczamy go w odpowiednim miejscu
+  195:
+  196:	  018C	E5 73			mov A, GG				; Zaladuj do akumulator licznik godzin
+  197:	  018E	75 F0 0A		mov B, #10
+  198:	  0191	84			div AB					; Podziel godzin przez 10
+  199:	  0192	93			movc A, @A+DPTR         ; Pobieramy wzorek cyfry dziesiatek godzin z pamieci ROM
+  200:	  0193	F5 7B			mov ZEGAR+5, A          ; Umieszczamy go w odpowiednim miejscu
+  201:	  0195	E5 F0			mov A, B                ; Jednostki godzin do akumulatora
+  202:	  0197	93			movc A, @A+DPTR         ; Pobieramy wzorek cyfry jednostek godzin z pamieci ROM
+  203:	  0198	F5 7A			mov ZEGAR+4, A          ; Umieszczamy go w odpowiednim miejscu
+  204:
+  205:	  019A	22			ret                     ; Powrot z funkcji
+  206:
+  207:	  019B			wzory:                      ; Wzorki wyswietlacza 7-seg w pamieci ROM
+  208:	  019B	3F 06 5B 4F	db 00111111b, 00000110b, 01011011b, 01001111b
+  209:	  019F	66 6D 7D 07	db 01100110b, 01101101b, 01111101b, 00000111b
+  210:	  01A3	7F 6F 77 7C	db 01111111b, 01101111b, 01110111b, 01111100b
+  211:
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 5
+
+
+
+ Line  I  Addr  Code            Source
+
+  212:				end
+
+
+
+
+
+                     register banks used:  ---
+
+                     no errors
+
+
+
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 6
+
+
+
+
+
+	       L I S T   O F   S Y M B O L S
+	       =============================
+
+
+SYMBOL				  TYPE     VALUE	LINE
+------------------------------------------------------------
+??ASEM_51			  NUMBER    8051
+??VERSION			  NUMBER    0130
+AC				  BIT	      D6
+ACC				  DATA	      E0
+B				  DATA	      F0
+BUZZER				  BIT	      95	   6
+CSDB				  NUMBER    0038	  11
+CSDS				  NUMBER    0030	  10
+CY				  BIT	      D7
+DPH				  DATA	      83
+DPL				  DATA	      82
+EA				  BIT	      AF
+ES				  BIT	      AC
+ET0				  BIT	      A9
+ET1				  BIT	      AB
+EX0				  BIT	      A8
+EX1				  BIT	      AA
+EXTI0				  CODE	    0003
+EXTI1				  CODE	    0013
+F0				  BIT	      D5
+GG				  NUMBER    0073	  17
+IE				  DATA	      A8
+IE0				  BIT	      89
+IE1				  BIT	      8B
+INT0				  BIT	      B2
+INT1				  BIT	      B3
+IP				  DATA	      B8
+IT0				  BIT	      88
+IT1				  BIT	      8A
+KEYS				  NUMBER    007C	  13
+MAIN_LOOP			  CODE	    00A8	  53
+MM				  NUMBER    0074	  16
+NIE60				  CODE	    010C	 123
+NIEDOLENTER			  CODE	    0145	 154
+NIEDOLESC			  CODE	    0138	 148
+NIEGORA				  CODE	    0169	 171
+NIELEWOENTER			  CODE	    012B	 142
+NIELEWOESC			  CODE	    011E	 135
+NIEPRAWOENTER			  CODE	    015F	 166
+NIEPRAWOESC			  CODE	    0152	 160
+NOACC7				  CODE	    00E6	  97
+NOKEY				  CODE	    00BF	  75
+OBSLUGAKLAWIATURY		  CODE	    0111	 128
+OV				  BIT	      D2
+P				  BIT	      D0
+P0				  DATA	      80
+P1				  DATA	      90
+P2				  DATA	      A0
+P3				  DATA	      B0
+PCON				  DATA	      87
+
+ASEM-51 V1.3                                         Copyright (c) 2002 by W.W. Heinz                                         PAGE 7
+
+
+
+SYMBOL				  TYPE     VALUE	LINE
+------------------------------------------------------------
+PRZELICZ			  CODE	    016D	 175
+PS				  BIT	      BC
+PSW				  DATA	      D0
+PT0				  BIT	      B9
+PT1				  BIT	      BB
+PX0				  BIT	      B8
+PX1				  BIT	      BA
+RB8				  BIT	      9A
+RD				  BIT	      B7
+REN				  BIT	      9C
+RESET				  CODE	    0000
+RI				  BIT	      98
+RS0				  BIT	      D3
+RS1				  BIT	      D4
+RXD				  BIT	      B0
+SBUF				  DATA	      99
+SCON				  DATA	      98
+SEG7				  BIT	      96	   7
+SINT				  CODE	    0023
+SKEY				  BIT	      B5	   8
+SM0				  BIT	      9F
+SM1				  BIT	      9E
+SM2				  BIT	      9D
+SP				  DATA	      81
+SS				  NUMBER    0075	  15
+STABLE				  CODE	    00D5	  89
+START				  CODE	    0080	  29
+T0				  BIT	      B4
+T1				  BIT	      B5
+TB8				  BIT	      9B
+TCON				  DATA	      88
+TEST				  BIT	      97	   5
+TF0				  BIT	      8D
+TF1				  BIT	      8F
+TH0				  DATA	      8C
+TH1				  DATA	      8D
+TI				  BIT	      99
+TIMER0				  CODE	    000B
+TIMER1				  CODE	    001B
+TL0				  DATA	      8A
+TL1				  DATA	      8B
+TMOD				  DATA	      89
+TR0				  BIT	      8C
+TR1				  BIT	      8E
+TXD				  BIT	      B1
+UNSTABLE			  CODE	    00DA	  92
+WR				  BIT	      B6
+WZORY				  CODE	    019B	 207
+ZEGAR				  NUMBER    0076	  14
